@@ -1,11 +1,13 @@
 package com.app.service;
 
-import com.app.dto.SaqueDepositoPayload;
 import com.app.model.entity.ContaCorrente;
 import com.app.model.entity.HistoricoTransacao;
 import com.app.repository.ContaCorrenteRepository;
 import com.app.repository.HistoricoTransacaoRepository;
+import com.app.service.impl.TransacaoContaCorrenteServiceImpl;
 import com.app.util.model.TipoTransacaoEnum;
+import com.app.vo.SaqueDepositoVO;
+import jakarta.validation.ValidationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.rest.webmvc.ResourceNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -28,7 +31,7 @@ import static org.mockito.Mockito.*;
 public class ContaCorrenteServiceImplTest {
 
     @InjectMocks
-    private ContaCorrenteServiceImpl contaCorrenteService;
+    private TransacaoContaCorrenteServiceImpl contaCorrenteService;
 
     @Mock
     private ContaCorrenteRepository contaCorrenteRepository;
@@ -46,37 +49,36 @@ public class ContaCorrenteServiceImplTest {
     @Test
     void  deveSacarValorContaPlanoExclusive(){
 
-        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(Optional.of(contaCorrente));
+        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(contaCorrente);
 
-        ResponseEntity response = contaCorrenteService.sacarValorConta(getSaqueDepositoPayload());
+        ResponseEntity<ContaCorrente> response = contaCorrenteService.sacarValorConta(getSaqueDepositoVO());
 
-        assertEquals(response.getStatusCode(), HttpStatus.OK);
-        assertTrue(((ContaCorrente) response.getBody()).getExclusive());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
     }
 
     @Test
     void  deveRetornarStatusNotFoundAoSacarValorConta(){
 
-        ContaCorrente contaCorrente = getContaCorrenteEntity();
-        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(Optional.empty());
+        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(null);
 
-        ResponseEntity response = contaCorrenteService.sacarValorConta(getSaqueDepositoPayload());
+        ValidationException validationException = assertThrows(ValidationException.class, () ->
+                contaCorrenteService.sacarValorConta(getSaqueDepositoVO()));
 
-        assertEquals(response.getStatusCode(), HttpStatus.NOT_FOUND);
+        assertEquals("Conta inválida ou Saldo insuficiente!", validationException.getMessage());
     }
 
     @Test
     void  deveSacarValorContaSemTaxaPlanoNaoExclusive(){
 
         contaCorrente.setExclusive(Boolean.FALSE);
-        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(Optional.of(contaCorrente));
+        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(contaCorrente);
 
-        SaqueDepositoPayload payload = getSaqueDepositoPayload();
-        ResponseEntity response = contaCorrenteService.sacarValorConta(payload);
+        ResponseEntity<ContaCorrente> response = contaCorrenteService.sacarValorConta(getSaqueDepositoVO());
 
-        assertEquals(response.getStatusCode(), HttpStatus.OK);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
 
-        ContaCorrente body = (ContaCorrente) response.getBody();
+        ContaCorrente body = response.getBody();
+        assert body != null;
         assertFalse(body.getExclusive());
     }
 
@@ -84,31 +86,27 @@ public class ContaCorrenteServiceImplTest {
     void  deveSacarValorContaComTaxaZeroPontoQuatro(){
 
         contaCorrente.setExclusive(Boolean.FALSE);
-        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(Optional.of(contaCorrente));
+        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(contaCorrente);
 
-        SaqueDepositoPayload payload = getSaqueDepositoPayload();
-        payload.setValor(BigDecimal.valueOf(101));
-        ResponseEntity response = contaCorrenteService.sacarValorConta(payload);
+        SaqueDepositoVO payload = getSaqueDepositoVO();
+        ResponseEntity<ContaCorrente> response = contaCorrenteService.sacarValorConta(payload);
 
-        assertEquals(response.getStatusCode(), HttpStatus.OK);
-
-        ContaCorrente body = (ContaCorrente) response.getBody();
-        assertFalse(body.getExclusive());
+        assertEquals(HttpStatus.OK, response.getStatusCode());
     }
 
     @Test
     void  deveSacarValorContaComTaxaUmPorCento(){
 
         contaCorrente.setExclusive(Boolean.FALSE);
-        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(Optional.of(contaCorrente));
+        when(contaCorrenteRepository.findByIdAndSaldoGreaterThanEqual(anyLong(), any())).thenReturn(contaCorrente);
 
-        SaqueDepositoPayload payload = getSaqueDepositoPayload();
-        payload.setValor(BigDecimal.valueOf(301));
-        ResponseEntity response = contaCorrenteService.sacarValorConta(payload);
+        SaqueDepositoVO vo = new SaqueDepositoVO(1L, BigDecimal.valueOf(301));
+        ResponseEntity<ContaCorrente> response = contaCorrenteService.sacarValorConta(vo);
 
-        assertEquals(response.getStatusCode(), HttpStatus.OK);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
 
-        ContaCorrente body = (ContaCorrente) response.getBody();
+        ContaCorrente body = response.getBody();
+        assert body != null;
         assertFalse(body.getExclusive());
     }
 
@@ -117,20 +115,19 @@ public class ContaCorrenteServiceImplTest {
 
         when(contaCorrenteRepository.findById(anyLong())).thenReturn(Optional.of(contaCorrente));
 
-        ResponseEntity response = contaCorrenteService.depositarValorConta(getSaqueDepositoPayload());
+        ResponseEntity<ContaCorrente> response = contaCorrenteService.depositarValorConta(getSaqueDepositoVO());
 
-        assertEquals(response.getStatusCode(), HttpStatus.CREATED);
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
     }
 
     @Test
     void  deveRetornarStatusNotFoundAoDepositarValorConta(){
 
-        ContaCorrente contaCorrente = getContaCorrenteEntity();
         when(contaCorrenteRepository.findById(anyLong())).thenReturn(Optional.empty());
 
-        ResponseEntity response = contaCorrenteService.depositarValorConta(getSaqueDepositoPayload());
+        ResourceNotFoundException resourceNotFoundException = assertThrows(ResourceNotFoundException.class, () -> contaCorrenteService.depositarValorConta(getSaqueDepositoVO()));
 
-        assertEquals(response.getStatusCode(), HttpStatus.NOT_FOUND);
+        assertEquals("Conta inválida!", resourceNotFoundException.getMessage());
     }
 
     @Test
@@ -143,20 +140,21 @@ public class ContaCorrenteServiceImplTest {
 
         ResponseEntity response = contaCorrenteService.buscarHistoricoTransacaoByDataTransacao(LocalDate.now(), paginacao);
 
-        assertEquals(response.getStatusCode(), HttpStatus.OK);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
     }
 
     @Test
     void deveRetornarStatusNotFoundAoBuscarHistoricoTransacao(){
 
-        HistoricoTransacao historicoTransacao = getHistoricoTransacaoEntity();
         PageRequest paginacao = PageRequest.of(1, 10);
 
         when(historicoTransacaoRepository.findAllByDataTransacao(LocalDate.now(), paginacao)).thenReturn(List.of());
 
-        ResponseEntity response = contaCorrenteService.buscarHistoricoTransacaoByDataTransacao(LocalDate.now(), paginacao);
+        LocalDate now = LocalDate.now();
 
-        assertEquals(response.getStatusCode(), HttpStatus.NOT_FOUND);
+        ResourceNotFoundException resourceNotFoundException = assertThrows(ResourceNotFoundException.class, () -> contaCorrenteService.buscarHistoricoTransacaoByDataTransacao(now, paginacao));
+
+        assertEquals("Não foi encontrado histórico de transações para a data: " + now + "!", resourceNotFoundException.getMessage());
     }
 
     private ContaCorrente getContaCorrenteEntity(){
@@ -168,11 +166,8 @@ public class ContaCorrenteServiceImplTest {
                 .build();
     }
 
-    private SaqueDepositoPayload getSaqueDepositoPayload(){
-        SaqueDepositoPayload payload = new SaqueDepositoPayload();
-        payload.setId(1L);
-        payload.setValor(BigDecimal.TEN);
-        return payload;
+    private SaqueDepositoVO getSaqueDepositoVO(){
+        return new SaqueDepositoVO(1L, BigDecimal.TEN);
     }
 
     private HistoricoTransacao getHistoricoTransacaoEntity(){
