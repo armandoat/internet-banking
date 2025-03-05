@@ -10,8 +10,7 @@ import com.app.vo.SaqueDepositoVO;
 import jakarta.transaction.Transactional;
 import jakarta.validation.ValidationException;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.rest.webmvc.ResourceNotFoundException;
 import org.springframework.http.HttpStatus;
@@ -26,12 +25,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class TransacaoContaCorrenteServiceImpl implements TransacaoContaCorrenteService {
-
-    private static final Logger logger = LoggerFactory.getLogger(TransacaoContaCorrenteServiceImpl.class);
 
     private final ContaCorrenteRepository contaCorrenteRepository;
     private final HistoricoTransacaoRepository historicoTransacaoRepository;
@@ -44,7 +42,7 @@ public class TransacaoContaCorrenteServiceImpl implements TransacaoContaCorrente
         BigDecimal valorSaqueComTxAdmin = vo.getValorSaqueComTxAdmin(vo.getValor(), contaCorrente.getExclusive());
         contaCorrente.setSaldo(contaCorrente.getSaldo().subtract(valorSaqueComTxAdmin));
         // Grava o histórico de transações da Conta Corrente.
-        logger.debug("Gravando a operação de saque na Conta Corrente: {} no histórico de transações.", contaCorrente.getNumeroConta());
+        log.debug("Gravando a operação de saque na Conta Corrente: {} no histórico de transações.", contaCorrente.getNumeroConta());
         this.gravarHistoricoTransacao(TipoTransacaoEnum.SAQUE, valorSaqueComTxAdmin, contaCorrente);
         //
         return new ResponseEntity<>(contaCorrente, HttpStatus.OK);
@@ -53,13 +51,11 @@ public class TransacaoContaCorrenteServiceImpl implements TransacaoContaCorrente
     @Override
     public ResponseEntity<ContaCorrente> depositarValorConta(SaqueDepositoVO vo) {
         Optional<ContaCorrente> optional = contaCorrenteRepository.findById(vo.getId());
-        if(!optional.isPresent()){
-            throw new ResourceNotFoundException("Conta inválida!");
-        }
+        optional.orElseThrow(() -> new ResourceNotFoundException("Conta inválida!"));
         ContaCorrente contaCorrente = optional.get();
         contaCorrente.setSaldo(contaCorrente.getSaldo().add(vo.getValor()));
         // Grava o histórico de transações da Conta Corrente
-        logger.debug("Gravando a operação de depósito na Conta Corrente: {} no histórico de transações.", contaCorrente.getNumeroConta());
+        log.debug("Gravando a operação de depósito na Conta Corrente: {} no histórico de transações.", contaCorrente.getNumeroConta());
         this.gravarHistoricoTransacao(TipoTransacaoEnum.DEPOSITO, vo.getValor(), contaCorrente);
         return new ResponseEntity<>(contaCorrente, HttpStatus.CREATED);
     }
@@ -68,12 +64,12 @@ public class TransacaoContaCorrenteServiceImpl implements TransacaoContaCorrente
     public ResponseEntity buscarHistoricoTransacaoByDataTransacao(LocalDate dataTransacao, Pageable pageable) {
         List<HistoricoTransacao> historicoTransacoes = historicoTransacaoRepository.findAllByDataTransacao(dataTransacao, pageable);
         if(CollectionUtils.isEmpty(historicoTransacoes)){
-            logger.debug("Não foi encontrado histórico de transações para a data: {}.", dataTransacao);
+            log.debug("Não foi encontrado histórico de transações para a data: {}.", dataTransacao);
             throw new ResourceNotFoundException("Não foi encontrado histórico de transações para a data: " + dataTransacao + "!");
         }
         // Devolve uma lista de histórico de transação ordenada pelo campo número da conta corrente
         Comparator<HistoricoTransacao> comparator = Comparator.comparing(h -> h.getContaCorrente().getNumeroConta());
-        logger.debug("Retornando o histórico de transação de cada movimentação para a data: {}.", dataTransacao);
+        log.debug("Retornando o histórico de transação de cada movimentação para a data: {}.", dataTransacao);
         return new ResponseEntity<>(historicoTransacoes.stream().sorted(comparator).collect(Collectors.toList()), HttpStatus.OK);
     }
 
